@@ -20,6 +20,7 @@
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
+
 namespace flatbuffers {
 namespace cpp {
 
@@ -757,11 +758,29 @@ std::string GenerateCPP(const Parser &parser,
   code += "#include \"flatbuffers/flatbuffers.h\"\n\n";
 
   if (parser.opts.include_dependence_headers) {
+    std::function<std::string(std::string const&)> pathStripper =
+        [](auto const& in) { return flatbuffers::StripPath(in); };
+
+    if (!parser.opts.strip_paths_from_headers) {
+        pathStripper = [](auto const& in) { return in; };
+    }
+
     int num_includes = 0;
     for (auto it = parser.included_files_.begin();
          it != parser.included_files_.end(); ++it) {
-      auto basename = flatbuffers::StripPath(
-                        flatbuffers::StripExtension(it->first));
+      auto basename = pathStripper(flatbuffers::StripExtension(it->first));
+
+      if (parser.opts.only_slashes) {
+        std::replace(basename.begin(), basename.end(), '\\', '/');
+      }
+
+      if (!parser.opts.to_remove_in_header.empty()) {
+        auto const loc = basename.find(parser.opts.to_remove_in_header);
+        if (loc == 0) {
+            basename.erase(0, parser.opts.to_remove_in_header.size());
+        }
+      }
+
       if (basename != file_name) {
         code += "#include \"" + basename + "_generated.h\"\n";
         num_includes++;

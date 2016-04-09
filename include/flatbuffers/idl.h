@@ -326,6 +326,9 @@ struct IDLOptions {
   bool prefixed_enums;
   bool scoped_enums;
   bool include_dependence_headers;
+  bool strip_paths_from_headers;
+  std::string to_remove_in_header;
+  bool only_slashes;
   bool mutable_buffer;
   bool one_file;
   bool proto_mode;
@@ -345,6 +348,9 @@ struct IDLOptions {
       indent_step(2),
       output_enum_identifiers(true), prefixed_enums(true), scoped_enums(false),
       include_dependence_headers(true),
+      strip_paths_from_headers(true),
+      to_remove_in_header(),
+      only_slashes(false),
       mutable_buffer(false),
       one_file(false),
       proto_mode(false),

@@ -113,6 +113,11 @@ static void Error(const std::string &err, bool usage, bool show_exe_name) {
       "  --gen-includes     (deprecated), this is the default behavior.\n"
       "                     If the original behavior is required (no include\n"
       "                     statements) use --no-includes.\n"
+      "  --no-strip-paths   Don\'t strip (relative) paths from includes.\n"
+      "  --remove-from-include PATTERN\n"
+      "                     Remove following pattern from the begining of\n"
+      "                     header includes\n"
+      "  --only-slashes     In includes use only forward slashes \'/\'.\n"
       "  --no-includes      Don\'t generate include statements for included\n"
       "                     schemas the generated file depends on (C++).\n"
       "  --gen-mutable      Generate accessors that can mutate buffers in-place.\n"
@@ -180,6 +185,13 @@ int main(int argc, const char *argv[]) {
       } else if(arg == "--gen-includes") {
         // Deprecated, remove this option some time in the future.
         printf("warning: --gen-includes is deprecated (it is now default)\n");
+      } else if(arg == "--no-strip-paths") {
+        opts.strip_paths_from_headers = false;
+      } else if(arg == "--remove-from-include") {
+        if (++argi >= argc) Error("missing pattern following " + arg, true);
+        opts.to_remove_in_header = argv[argi];
+      } else if(arg == "--only-slashes") {
+        opts.only_slashes = true;
       } else if(arg == "--no-includes") {
         opts.include_dependence_headers = false;
       } else if (arg == "--gen-onefile") {
