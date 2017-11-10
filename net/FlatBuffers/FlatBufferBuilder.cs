@@ -80,9 +80,9 @@ namespace FlatBuffers
         /// <summary>
         /// Gets and sets a Boolean to disable the optimization when serializing
         /// default values to a Table.
-        /// 
+        ///
         /// In order to save space, fields that are set to their default value
-        /// don't get serialized into the buffer. 
+        /// don't get serialized into the buffer.
         /// </summary>
         public bool ForceDefaults { get; set; }
 
@@ -296,6 +296,18 @@ namespace FlatBuffers
             return new VectorOffset(Offset);
         }
 
+        /// <summary>
+        /// Creates a vector of tables.
+        /// </summary>
+        /// <param name="offsets">Offsets of the tables.</param>
+        public VectorOffset CreateVectorOfTables<T>(Offset<T>[] offsets) where T : struct
+        {
+            NotNested();
+            StartVector(sizeof(int), offsets.Length, sizeof(int));
+            for (int i = offsets.Length - 1; i >= 0; i--) AddOffset(offsets[i].Value);
+            return EndVector();
+        }
+
         /// @cond FLATBUFFERS_INTENRAL
         public void Nested(int obj)
         {
@@ -349,7 +361,7 @@ namespace FlatBuffers
         /// and <see cref="ForceDefaults"/> is false, the value will be skipped.</param>
         /// <param name="d">The default value to compare the value against</param>
         public void AddBool(int o, bool x, bool d) { if (ForceDefaults || x != d) { AddBool(x); Slot(o); } }
-        
+
         /// <summary>
         /// Adds a SByte to the Table at index `o` in its vtable using the value `x` and default `d`
         /// </summary>
@@ -358,7 +370,7 @@ namespace FlatBuffers
         /// and <see cref="ForceDefaults"/> is false, the value will be skipped.</param>
         /// <param name="d">The default value to compare the value against</param>
         public void AddSbyte(int o, sbyte x, sbyte d) { if (ForceDefaults || x != d) { AddSbyte(x); Slot(o); } }
-        
+
         /// <summary>
         /// Adds a Byte to the Table at index `o` in its vtable using the value `x` and default `d`
         /// </summary>
@@ -488,7 +500,11 @@ namespace FlatBuffers
             AddInt((int)0);
             var vtableloc = Offset;
             // Write out the current vtable.
-            for (int i = _vtableSize - 1; i >= 0 ; i--) {
+            int i = _vtableSize - 1;
+            // Trim trailing zeroes.
+            for (; i >= 0 && _vtable[i] == 0; i--) {}
+            int trimmedSize = i + 1;
+            for (; i >= 0 ; i--) {
                 // Offset relative to the start of the table.
                 short off = (short)(_vtable[i] != 0
                                         ? vtableloc - _vtable[i]
@@ -501,12 +517,12 @@ namespace FlatBuffers
 
             const int standardFields = 2; // The fields below:
             AddShort((short)(vtableloc - _objectStart));
-            AddShort((short)((_vtableSize + standardFields) *
+            AddShort((short)((trimmedSize + standardFields) *
                              sizeof(short)));
 
             // Search for an existing vtable that matches the current one.
             int existingVtable = 0;
-            for (int i = 0; i < _numVtables; i++) {
+            for (i = 0; i < _numVtables; i++) {
                 int vt1 = _bb.Length - _vtables[i];
                 int vt2 = _space;
                 short len = _bb.GetShort(vt1);
@@ -582,6 +598,8 @@ namespace FlatBuffers
         /// </summary>
         /// <remarks>
         /// This is typically only called after you call `Finish()`.
+        /// The actual data starts at the ByteBuffer's current position,
+        /// not necessarily at `0`.
         /// </remarks>
         /// <returns>
         /// Returns the ByteBuffer for this FlatBuffer.

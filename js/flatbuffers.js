@@ -2,6 +2,19 @@
 /// @addtogroup flatbuffers_javascript_api
 /// @{
 /// @cond FLATBUFFERS_INTERNAL
+
+/**
+ * @fileoverview
+ *
+ * Need to suppress 'global this' error so the Node.js export line doesn't cause
+ * closure compile to error out.
+ * @suppress {globalThis}
+ */
+
+/**
+ * @const
+ * @namespace
+ */
 var flatbuffers = {};
 
 /**
@@ -71,8 +84,8 @@ flatbuffers.isLittleEndian = new Uint16Array(new Uint8Array([1, 0]).buffer)[0] =
 
 /**
  * @constructor
- * @param {number} high
  * @param {number} low
+ * @param {number} high
  */
 flatbuffers.Long = function(low, high) {
   /**
@@ -89,8 +102,8 @@ flatbuffers.Long = function(low, high) {
 };
 
 /**
- * @param {number} high
  * @param {number} low
+ * @param {number} high
  * @returns {flatbuffers.Long}
  */
 flatbuffers.Long.create = function(low, high) {
@@ -102,7 +115,7 @@ flatbuffers.Long.create = function(low, high) {
  * @returns {number}
  */
 flatbuffers.Long.prototype.toFloat64 = function() {
-  return this.low + this.high * 0x100000000;
+  return (this.low >>> 0) + this.high * 0x100000000;
 };
 
 /**
@@ -125,11 +138,13 @@ flatbuffers.Long.ZERO = new flatbuffers.Long(0, 0);
  * Create a FlatBufferBuilder.
  *
  * @constructor
- * @param {number=} initial_size
+ * @param {number=} opt_initial_size
  */
-flatbuffers.Builder = function(initial_size) {
-  if (!initial_size) {
-    initial_size = 1024;
+flatbuffers.Builder = function(opt_initial_size) {
+  if (!opt_initial_size) {
+    var initial_size = 1024;
+  } else {
+    var initial_size = opt_initial_size;
   }
 
   /**
@@ -234,9 +249,8 @@ flatbuffers.Builder.prototype.dataBuffer = function() {
 };
 
 /**
- * Get the ByteBuffer representing the FlatBuffer. Only call this after you've
- * called finish(). The actual data starts at the ByteBuffer's current position,
- * not necessarily at 0.
+ * Get the bytes representing the FlatBuffer. Only call this after you've
+ * called finish().
  *
  * @returns {Uint8Array}
  */
@@ -525,6 +539,10 @@ flatbuffers.Builder.prototype.offset = function() {
  * @param {flatbuffers.ByteBuffer} bb The current buffer with the existing data
  * @returns {flatbuffers.ByteBuffer} A new byte buffer with the old data copied
  * to it. The data is located at the end of the buffer.
+ *
+ * uint8Array.set() formally takes {Array<number>|ArrayBufferView}, so to pass
+ * it a uint8Array we need to suppress the type check:
+ * @suppress {checkTypes}
  */
 flatbuffers.Builder.growByteBuffer = function(bb) {
   var old_buf_size = bb.capacity();
@@ -586,23 +604,28 @@ flatbuffers.Builder.prototype.endObject = function() {
   this.addInt32(0);
   var vtableloc = this.offset();
 
+  // Trim trailing zeroes.
+  var i = this.vtable_in_use - 1;
+  for (; i >= 0 && this.vtable[i] == 0; i--) {}
+  var trimmed_size = i + 1;
+
   // Write out the current vtable.
-  for (var i = this.vtable_in_use - 1; i >= 0; i--) {
+  for (; i >= 0; i--) {
     // Offset relative to the start of the table.
     this.addInt16(this.vtable[i] != 0 ? vtableloc - this.vtable[i] : 0);
   }
 
   var standard_fields = 2; // The fields below:
   this.addInt16(vtableloc - this.object_start);
-  this.addInt16((this.vtable_in_use + standard_fields) * flatbuffers.SIZEOF_SHORT);
+  var len = (trimmed_size + standard_fields) * flatbuffers.SIZEOF_SHORT;
+  this.addInt16(len);
 
   // Search for an existing vtable that matches the current one.
   var existing_vtable = 0;
+  var vt1 = this.space;
 outer_loop:
-  for (var i = 0; i < this.vtables.length; i++) {
-    var vt1 = this.bb.capacity() - this.vtables[i];
-    var vt2 = this.space;
-    var len = this.bb.readInt16(vt1);
+  for (i = 0; i < this.vtables.length; i++) {
+    var vt2 = this.bb.capacity() - this.vtables[i];
     if (len == this.bb.readInt16(vt2)) {
       for (var j = flatbuffers.SIZEOF_SHORT; j < len; j += flatbuffers.SIZEOF_SHORT) {
         if (this.bb.readInt16(vt1 + j) != this.bb.readInt16(vt2 + j)) {
@@ -639,10 +662,11 @@ outer_loop:
  * Finalize a buffer, poiting to the given `root_table`.
  *
  * @param {flatbuffers.Offset} root_table
- * @param {string=} file_identifier
+ * @param {string=} opt_file_identifier
  */
-flatbuffers.Builder.prototype.finish = function(root_table, file_identifier) {
-  if (file_identifier) {
+flatbuffers.Builder.prototype.finish = function(root_table, opt_file_identifier) {
+  if (opt_file_identifier) {
+    var file_identifier = opt_file_identifier;
     this.prep(this.minalign, flatbuffers.SIZEOF_INT +
       flatbuffers.FILE_IDENTIFIER_LENGTH);
     if (file_identifier.length != flatbuffers.FILE_IDENTIFIER_LENGTH) {
@@ -925,9 +949,17 @@ flatbuffers.ByteBuffer.prototype.readFloat64 = function(offset) {
 
 /**
  * @param {number} offset
- * @param {number} value
+ * @param {number|boolean} value
  */
 flatbuffers.ByteBuffer.prototype.writeInt8 = function(offset, value) {
+  this.bytes_[offset] = /** @type {number} */(value);
+};
+
+/**
+ * @param {number} offset
+ * @param {number} value
+ */
+flatbuffers.ByteBuffer.prototype.writeUint8 = function(offset, value) {
   this.bytes_[offset] = value;
 };
 
@@ -944,6 +976,15 @@ flatbuffers.ByteBuffer.prototype.writeInt16 = function(offset, value) {
  * @param {number} offset
  * @param {number} value
  */
+flatbuffers.ByteBuffer.prototype.writeUint16 = function(offset, value) {
+    this.bytes_[offset] = value;
+    this.bytes_[offset + 1] = value >> 8;
+};
+
+/**
+ * @param {number} offset
+ * @param {number} value
+ */
 flatbuffers.ByteBuffer.prototype.writeInt32 = function(offset, value) {
   this.bytes_[offset] = value;
   this.bytes_[offset + 1] = value >> 8;
@@ -953,11 +994,31 @@ flatbuffers.ByteBuffer.prototype.writeInt32 = function(offset, value) {
 
 /**
  * @param {number} offset
+ * @param {number} value
+ */
+flatbuffers.ByteBuffer.prototype.writeUint32 = function(offset, value) {
+    this.bytes_[offset] = value;
+    this.bytes_[offset + 1] = value >> 8;
+    this.bytes_[offset + 2] = value >> 16;
+    this.bytes_[offset + 3] = value >> 24;
+};
+
+/**
+ * @param {number} offset
  * @param {flatbuffers.Long} value
  */
 flatbuffers.ByteBuffer.prototype.writeInt64 = function(offset, value) {
   this.writeInt32(offset, value.low);
   this.writeInt32(offset + 4, value.high);
+};
+
+/**
+ * @param {number} offset
+ * @param {flatbuffers.Long} value
+ */
+flatbuffers.ByteBuffer.prototype.writeUint64 = function(offset, value) {
+    this.writeUint32(offset, value.low);
+    this.writeUint32(offset + 4, value.high);
 };
 
 /**
@@ -1015,10 +1076,10 @@ flatbuffers.ByteBuffer.prototype.__union = function(t, offset) {
  * FlatBuffer later on.
  *
  * @param {number} offset
- * @param {flatbuffers.Encoding=} optionalEncoding Defaults to UTF16_STRING
+ * @param {flatbuffers.Encoding=} opt_encoding Defaults to UTF16_STRING
  * @returns {string|Uint8Array}
  */
-flatbuffers.ByteBuffer.prototype.__string = function(offset, optionalEncoding) {
+flatbuffers.ByteBuffer.prototype.__string = function(offset, opt_encoding) {
   offset += this.readInt32(offset);
 
   var length = this.readInt32(offset);
@@ -1027,7 +1088,7 @@ flatbuffers.ByteBuffer.prototype.__string = function(offset, optionalEncoding) {
 
   offset += flatbuffers.SIZEOF_INT;
 
-  if (optionalEncoding === flatbuffers.Encoding.UTF8_BYTES) {
+  if (opt_encoding === flatbuffers.Encoding.UTF8_BYTES) {
     return this.bytes_.subarray(offset, offset + length);
   }
 
